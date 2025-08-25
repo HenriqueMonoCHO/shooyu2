@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FPS Look Around</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+    #info {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      color: white;
+      z-index: 10;
+      background: rgba(0,0,0,0.5);
+      padding: 10px;
+      border-radius: 5px;
+    }
+    #button3D {
+      position: absolute;
+      padding: 10px 20px;
+      background: #7412f4;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      display: none;
+      z-index: 20;
+    }
+
+    .modal {
+      display: none; /* começa escondido */
+      position: fixed;
+      z-index: 999;
+      left: 0;
+      top: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: auto;
+      background-color: rgba(0,0,0,0.7);
+      backdrop-filter: blur(3px);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .modal-content {
+      background-color: #222;
+      padding: 30px;
+      border-radius: 10px;
+      color: white;
+      width: 320px;
+      box-shadow: 0 0 15px #a811ff;
+    }
+
+    .close {
+      color: #aaa;
+      float: right;
+      font-size: 28px;
+      font-weight: bold;
+      cursor: pointer;
+    }
+
+    .close:hover {
+      color: #fff;
+    }
+
+    input[type="text"],
+    input[type="password"] {
+      width: 100%;
+      padding: 8px;
+      margin-top: 5px;
+      border-radius: 4px;
+      border: none;
+      outline: none;
+    }
+
+    button[type="submit"] {
+      width: 100%;
+      padding: 10px;
+      background-color: #c062fa;
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    button[type="submit"]:hover {
+      background-color: #802be8;
+    }
+
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      width: 20px;
+      height: 20px;
+      margin-left: -10px; /* metade da largura para centralizar */
+      margin-top: -10px;  /* metade da altura para centralizar */
+      pointer-events: none; /* para o mouse "passar" pela mira */
+      z-index: 1000;
+    }
+
+    #crosshair::before,
+    #crosshair::after {
+      content: '';
+      position: absolute;
+      background: white;
+    }
+
+    #crosshair::before {
+      left: 9px;
+      top: 0;
+      width: 2px;
+      height: 20px;
+    }
+
+    #crosshair::after {
+      top: 9px;
+      left: 0;
+      width: 20px;
+      height: 2px;
+    }
+
+  </style>
+</head>
+<body>
+  <div id="info">Mova o mouse para olhar ao redor. Clique na tela para ativar o controle. Use clique esquerdo para atirar.</div>
+  <button id="button3D" onclick="mostrarOI()">Shooyu</button>
+  <div id="imageOverlay" style="display:none; position:fixed; top:0; left:0; width:100vw; height:100vh; background: rgba(0,0,0,0.8); justify-content:center; align-items:center; z-index:1000;">
+    <img id="popupImage" src="https://media3.giphy.com/media/v1.Y2lkPTZjMDliOTUybHZkenM5eG80ZHZwNmdtODFkZHl3Z2JreDJ0MmEydWxzbzI2bGVwdSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/p0ydOvZ6xm8PMe5qlr/giphy.gif" alt="Imagem Popup" style="max-width:90%; max-height:90%; border-radius:8px; box-shadow: 0 0 20px #00ff00;">
+    <button id="closeImageBtn" style="position:absolute; top:20px; right:20px; font-size:24px; background:none; border:none; color:white; cursor:pointer;">&times;</button>
+  </div>
+
+  <div id="crosshair"></div>
+
+  <div id="loginModal" class="modal" style="display:flex;">
+    <div class="modal-content">
+      <span id="closeModal" class="close">&times;</span>
+      <h2>Login</h2>
+      <form id="loginForm">
+        <label for="username">Usuário:</label><br />
+        <input type="text" id="username" name="username" required /><br /><br />
+        <label for="password">Senha:</label><br />
+        <input type="password" id="password" name="password" required /><br /><br />
+        <button type="submit">Entrar</button>
+      </form>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script>
+    // Setup básico
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
+    const renderer = new THREE.WebGLRenderer({antialias: true});
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+
+    // Luz ambiente
+    const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
+    scene.add(ambientLight);
+
+    // Luz direcional
+    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
+    directionalLight.position.set(10,10,10);
+    scene.add(directionalLight);
+
+    // Criar chão simples
+    const floorGeometry = new THREE.PlaneGeometry(100, 100);
+    const floorMaterial = new THREE.MeshStandardMaterial({color: 0x444444});
+    const floor = new THREE.Mesh(floorGeometry, floorMaterial);
+    floor.rotation.x = -Math.PI/2;
+    scene.add(floor);
+
+    // Criar cubo que será o "botão"
+    const cubeGeometry = new THREE.BoxGeometry(1,1,1);
+    const cubeMaterial = new THREE.MeshStandardMaterial({color: 0x28a745});
+    const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
+    cube.position.set(0, 0.5, -5);
+    scene.add(cube);
+
+    // Posição inicial da câmera
+    camera.position.set(0, 1.6, 0);
+
+    // Controle do ângulo da câmera
+    let yaw = 0;
+    let pitch = 0;
+
+    const sensitivity = 0.002;
+
+    let isPointerLocked = false;
+
+    function clamp(value, min, max) {
+      return Math.min(Math.max(value, min), max);
+    }
+
+    // Solicita Pointer Lock ao clicar na tela, mas só se o modal estiver fechado
+    renderer.domElement.addEventListener('click', () => {
+      if (!isPointerLocked && loginModal.style.display === 'none') {
+        renderer.domElement.requestPointerLock();
+      }
+    });
+
+    document.addEventListener('pointerlockchange', () => {
+      isPointerLocked = document.pointerLockElement === renderer.domElement;
+    });
+
+    document.addEventListener('mousemove', (event) => {
+      if (!isPointerLocked) return;
+      yaw -= event.movementX * sensitivity;
+      pitch -= event.movementY * sensitivity;
+      pitch = clamp(pitch, -Math.PI/2 + 0.1, Math.PI/2 - 0.1);
+    });
+
+    const button3D = document.getElementById('button3D');
+    const loginModal = document.getElementById('loginModal');
+    const closeModalBtn = document.getElementById('closeModal');
+    const loginForm = document.getElementById('loginForm');
+    const imageOverlay = document.getElementById('imageOverlay');
+    const closeImageBtn = document.getElementById('closeImageBtn');
+
+    function updateButtonPosition() {
+      const vector = new THREE.Vector3();
+      vector.setFromMatrixPosition(cube.matrixWorld);
+      vector.project(camera);
+
+      const x = (vector.x * 0.5 + 0.5) * window.innerWidth;
+      const y = (-vector.y * 0.5 + 0.5) * window.innerHeight;
+
+      const cameraDirection = new THREE.Vector3();
+      camera.getWorldDirection(cameraDirection);
+      const toCube = new THREE.Vector3();
+      toCube.subVectors(cube.position, camera.position);
+      const dot = cameraDirection.dot(toCube);
+
+      if (dot > 0) {
+        button3D.style.display = 'block';
+        button3D.style.left = `${x}px`;
+        button3D.style.top = `${y}px`;
+
+        const centerX = window.innerWidth / 2;
+        const centerY = window.innerHeight / 2;
+
+        const dist = Math.sqrt((x - centerX)**2 + (y - centerY)**2);
+        if (dist < 50) {
+          button3D.disabled = false;
+          button3D.style.opacity = '1';
+          button3D.style.cursor = 'pointer';
+        } else {
+          button3D.disabled = true;
+          button3D.style.opacity = '0.4';
+          button3D.style.cursor = 'not-allowed';
+        }
+      } else {
+        button3D.style.display = 'none';
+      }
+    }
+
+    // Controle dos projéteis
+    const bullets = [];
+    const bulletSpeed = 0.5;
+
+    function shoot() {
+      if (!isPointerLocked) return;
+
+      // Criar uma esfera pequena como projétil
+      const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
+      const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
+      const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
+
+      // Posição do projétil: na posição da câmera
+      bullet.position.copy(camera.position);
+
+      // Direção do tiro: direção da câmera
+      const direction = new THREE.Vector3();
+      camera.getWorldDirection(direction);
+      bullet.userData.direction = direction.clone();
+
+      // Adiciona projétil na cena e na lista
+      scene.add(bullet);
+      bullets.push(bullet);
+    }
+
+    function updateBullets() {
+      for (let i = bullets.length - 1; i >= 0; i--) {
+        const bullet = bullets[i];
+        bullet.position.addScaledVector(bullet.userData.direction, bulletSpeed);
+
+        // Testar colisão simples com o cubo (caixa)
+        const dist = bullet.position.distanceTo(cube.position);
+        const hitRadius = 0.7; // ajuste conforme tamanho do cubo
+        if (dist < hitRadius) {
+          // Colidiu com o cubo, abrir imagem
+          imageOverlay.style.display = 'flex';
+
+          // Remover projétil da cena
+          scene.remove(bullet);
+          bullets.splice(i, 1);
+
+          // Sair do pointer lock para interagir com a imagem
+          isPointerLocked = false;
+          document.exitPointerLock();
+
+          continue; // não precisa verificar o restante para este projétil
+        }
+
+        // Remove projétil se estiver longe demais
+        if (bullet.position.distanceTo(camera.position) > 100) {
+          scene.remove(bullet);
+          bullets.splice(i, 1);
+        }
+      }
+    }
+
+    function animate() {
+      requestAnimationFrame(animate);
+      camera.rotation.order = 'YXZ';
+      camera.rotation.y = yaw;
+      camera.rotation.x = pitch;
+
+      updateButtonPosition();
+      updateBullets();
+
+      renderer.render(scene, camera);
+    }
+
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    // Fechar modal ao clicar no X
+    closeModalBtn.addEventListener('click', () => {
+      loginModal.style.display = 'none';
+      renderer.domElement.requestPointerLock();
+    });
+
+    // Fechar modal clicando fora da área do conteúdo
+    window.addEventListener('click', (e) => {
+      if (e.target === loginModal) {
+        loginModal.style.display = 'none';
+        renderer.domElement.requestPointerLock();
+      }
+    });
+
+    // Formulário de login
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+
+      const username = loginForm.username.value.trim();
+      const password = loginForm.password.value.trim();
+
+      if (username && password) {
+        alert(`Bem-vindo, ${username}! Login simulado com sucesso.`);
+        loginModal.style.display = 'none';
+        renderer.domElement.requestPointerLock();
+      } else {
+        alert('Preencha usuário e senha!');
+      }
+    });
+
+    // Criar partículas para as estrelas
+    const starsGeometry = new THREE.BufferGeometry();
+    const starsCount = 500; // quantidade de estrelas
+    const positions = [];
+
+    for (let i = 0; i < starsCount; i++) {
+      // espalhar as estrelas num espaço grande em volta da câmera
+      const x = (Math.random() - 0.5) * 200;
+      const y = Math.random() * 100 + 10; // acima do chão (y positivo)
+      const z = (Math.random() - 0.5) * 200;
+      positions.push(x, y, z);
+    }
+
+    starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+
+    const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
+    const stars = new THREE.Points(starsGeometry, starsMaterial);
+
+    scene.add(stars);
+
+    // Mostrar imagem ao clicar no botão 3D
+    button3D.addEventListener('click', () => {
+      if (!button3D.disabled) {
+        imageOverlay.style.display = 'flex';
+        isPointerLocked = false;
+        document.exitPointerLock();
+      }
+    });
+
+    closeImageBtn.addEventListener('click', () => {
+      imageOverlay.style.display = 'none';
+      // Retomar pointer lock após fechar a imagem, só se modal estiver fechado
+      if (loginModal.style.display === 'none') {
+        renderer.domElement.requestPointerLock();
+      }
+    });
+
+    // Atirar ao clicar com o botão esquerdo do mouse
+    window.addEventListener('mousedown', (event) => {
+      if (event.button === 0) { // botão esquerdo
+        shoot();
+      }
+    });
+  </script>
+</body>
+</html>
