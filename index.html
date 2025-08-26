@@ -155,52 +155,42 @@
 
   <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
   <script>
-    // Setup básico
     const scene = new THREE.Scene();
     const camera = new THREE.PerspectiveCamera(75, window.innerWidth/window.innerHeight, 0.1, 1000);
     const renderer = new THREE.WebGLRenderer({antialias: true});
     renderer.setSize(window.innerWidth, window.innerHeight);
     document.body.appendChild(renderer.domElement);
 
-    // Luz ambiente
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.8);
     scene.add(ambientLight);
 
-    // Luz direcional
     const directionalLight = new THREE.DirectionalLight(0xffffff, 0.6);
     directionalLight.position.set(10,10,10);
     scene.add(directionalLight);
 
-    // Criar chão simples
     const floorGeometry = new THREE.PlaneGeometry(100, 100);
     const floorMaterial = new THREE.MeshStandardMaterial({color: 0x444444});
     const floor = new THREE.Mesh(floorGeometry, floorMaterial);
     floor.rotation.x = -Math.PI/2;
     scene.add(floor);
 
-    // Criar cubo que será o "botão"
     const cubeGeometry = new THREE.BoxGeometry(1,1,1);
     const cubeMaterial = new THREE.MeshStandardMaterial({color: 0x28a745});
     const cube = new THREE.Mesh(cubeGeometry, cubeMaterial);
     cube.position.set(0, 0.5, -5);
     scene.add(cube);
 
-    // Posição inicial da câmera
     camera.position.set(0, 1.6, 0);
 
-    // Controle do ângulo da câmera
     let yaw = 0;
     let pitch = 0;
-
     const sensitivity = 0.002;
-
     let isPointerLocked = false;
 
     function clamp(value, min, max) {
       return Math.min(Math.max(value, min), max);
     }
 
-    // Solicita Pointer Lock ao clicar na tela, mas só se o modal estiver fechado
     renderer.domElement.addEventListener('click', () => {
       if (!isPointerLocked && loginModal.style.display === 'none') {
         renderer.domElement.requestPointerLock();
@@ -262,27 +252,75 @@
       }
     }
 
-    // Controle dos projéteis
+    const movement = { forward: false, backward: false, left: false, right: false, running: false };
+    let velocityY = 0;
+    let isGrounded = true;
+    const gravity = -0.01;
+    const jumpForce = 0.18;
+    const baseSpeed = 0.1;
+    const runMultiplier = 1.8;
+
+    document.addEventListener('keydown', (e) => {
+      if (!isPointerLocked) return;
+      if (e.code === 'KeyW') movement.forward = true;
+      if (e.code === 'KeyS') movement.backward = true;
+      if (e.code === 'KeyA') movement.left = true;
+      if (e.code === 'KeyD') movement.right = true;
+      if (e.code === 'ShiftLeft') movement.running = true;
+      if (e.code === 'Space' && isGrounded) {
+        velocityY = jumpForce;
+        isGrounded = false;
+      }
+    });
+
+    document.addEventListener('keyup', (e) => {
+      if (e.code === 'KeyW') movement.forward = false;
+      if (e.code === 'KeyS') movement.backward = false;
+      if (e.code === 'KeyA') movement.left = false;
+      if (e.code === 'KeyD') movement.right = false;
+      if (e.code === 'ShiftLeft') movement.running = false;
+    });
+
+    function updateMovement() {
+      const moveDirection = new THREE.Vector3();
+      const forward = new THREE.Vector3();
+      camera.getWorldDirection(forward);
+      forward.y = 0;
+      forward.normalize();
+      const right = new THREE.Vector3();
+      right.crossVectors(forward, camera.up).normalize();
+
+      if (movement.forward) moveDirection.add(forward);
+      if (movement.backward) moveDirection.sub(forward);
+      if (movement.left) moveDirection.sub(right);
+      if (movement.right) moveDirection.add(right);
+
+      const speed = baseSpeed * (movement.running ? runMultiplier : 1);
+      camera.position.add(moveDirection.normalize().multiplyScalar(speed));
+
+      velocityY += gravity;
+      camera.position.y += velocityY;
+
+      if (camera.position.y <= 1.6) {
+        camera.position.y = 1.6;
+        velocityY = 0;
+        isGrounded = true;
+      }
+    }
+
+    // === TIRO ===
     const bullets = [];
     const bulletSpeed = 0.5;
 
     function shoot() {
       if (!isPointerLocked) return;
-
-      // Criar uma esfera pequena como projétil
       const bulletGeometry = new THREE.SphereGeometry(0.05, 8, 8);
       const bulletMaterial = new THREE.MeshBasicMaterial({color: 0xffff00});
       const bullet = new THREE.Mesh(bulletGeometry, bulletMaterial);
-
-      // Posição do projétil: na posição da câmera
       bullet.position.copy(camera.position);
-
-      // Direção do tiro: direção da câmera
       const direction = new THREE.Vector3();
       camera.getWorldDirection(direction);
       bullet.userData.direction = direction.clone();
-
-      // Adiciona projétil na cena e na lista
       scene.add(bullet);
       bullets.push(bullet);
     }
@@ -292,29 +330,39 @@
         const bullet = bullets[i];
         bullet.position.addScaledVector(bullet.userData.direction, bulletSpeed);
 
-        // Testar colisão simples com o cubo (caixa)
         const dist = bullet.position.distanceTo(cube.position);
-        const hitRadius = 0.7; // ajuste conforme tamanho do cubo
+        const hitRadius = 0.7;
         if (dist < hitRadius) {
-          // Colidiu com o cubo, abrir imagem
           imageOverlay.style.display = 'flex';
-
-          // Remover projétil da cena
           scene.remove(bullet);
           bullets.splice(i, 1);
-
-          // Sair do pointer lock para interagir com a imagem
           isPointerLocked = false;
           document.exitPointerLock();
-
-          continue; // não precisa verificar o restante para este projétil
+          continue;
         }
 
-        // Remove projétil se estiver longe demais
         if (bullet.position.distanceTo(camera.position) > 100) {
           scene.remove(bullet);
           bullets.splice(i, 1);
         }
+      }
+    }
+
+    // === PORTAL ===
+    const portalGeometry = new THREE.TorusGeometry(1.2, 0.3, 16, 100);
+    const portalMaterial = new THREE.MeshStandardMaterial({ color: 0x8000ff, emissive: 0x4400ff });
+    const portal = new THREE.Mesh(portalGeometry, portalMaterial);
+    portal.position.set(5, 2, -10);
+    portal.rotation.x = Math.PI / 2;
+    scene.add(portal);
+
+    let portalActivated = false;
+
+    function checkPortalProximity() {
+      const distanceToPortal = camera.position.distanceTo(portal.position);
+      if (distanceToPortal < 1.5 && !portalActivated) {
+        portalActivated = true;
+        window.open("https://www.youtube.com/shorts/gmDVsKIvVc8", "_blank");
       }
     }
 
@@ -323,10 +371,10 @@
       camera.rotation.order = 'YXZ';
       camera.rotation.y = yaw;
       camera.rotation.x = pitch;
-
+      updateMovement();
       updateButtonPosition();
       updateBullets();
-
+      checkPortalProximity(); // <--- AQUI
       renderer.render(scene, camera);
     }
 
@@ -338,13 +386,11 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Fechar modal ao clicar no X
     closeModalBtn.addEventListener('click', () => {
       loginModal.style.display = 'none';
       renderer.domElement.requestPointerLock();
     });
 
-    // Fechar modal clicando fora da área do conteúdo
     window.addEventListener('click', (e) => {
       if (e.target === loginModal) {
         loginModal.style.display = 'none';
@@ -352,13 +398,10 @@
       }
     });
 
-    // Formulário de login
     loginForm.addEventListener('submit', (e) => {
       e.preventDefault();
-
       const username = loginForm.username.value.trim();
       const password = loginForm.password.value.trim();
-
       if (username && password) {
         alert(`Bem-vindo, ${username}! Login simulado com sucesso.`);
         loginModal.style.display = 'none';
@@ -368,27 +411,22 @@
       }
     });
 
-    // Criar partículas para as estrelas
     const starsGeometry = new THREE.BufferGeometry();
-    const starsCount = 500; // quantidade de estrelas
+    const starsCount = 500;
     const positions = [];
 
     for (let i = 0; i < starsCount; i++) {
-      // espalhar as estrelas num espaço grande em volta da câmera
       const x = (Math.random() - 0.5) * 200;
-      const y = Math.random() * 100 + 10; // acima do chão (y positivo)
+      const y = Math.random() * 100 + 10;
       const z = (Math.random() - 0.5) * 200;
       positions.push(x, y, z);
     }
 
     starsGeometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-
     const starsMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.5 });
     const stars = new THREE.Points(starsGeometry, starsMaterial);
-
     scene.add(stars);
 
-    // Mostrar imagem ao clicar no botão 3D
     button3D.addEventListener('click', () => {
       if (!button3D.disabled) {
         imageOverlay.style.display = 'flex';
@@ -399,19 +437,16 @@
 
     closeImageBtn.addEventListener('click', () => {
       imageOverlay.style.display = 'none';
-      // Retomar pointer lock após fechar a imagem, só se modal estiver fechado
       if (loginModal.style.display === 'none') {
         renderer.domElement.requestPointerLock();
       }
     });
 
-    // Atirar ao clicar com o botão esquerdo do mouse
     window.addEventListener('mousedown', (event) => {
-      if (event.button === 0) { // botão esquerdo
+      if (event.button === 0) {
         shoot();
       }
     });
   </script>
 </body>
-
 </html>
