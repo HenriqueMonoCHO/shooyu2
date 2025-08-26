@@ -1,0 +1,121 @@
+body {
+    margin: 0;
+    overflow: hidden;
+    font-family: Arial, sans-serif;
+  }
+  #info {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: white;
+    z-index: 10;
+    background: rgba(0,0,0,0.5);
+    padding: 10px;
+    border-radius: 5px;
+  }
+  #button3D {
+    position: absolute;
+    padding: 10px 20px;
+    background: #7412f4;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    display: none;
+    z-index: 20;
+  }
+
+  .modal {
+    display: none; /* começa escondido */
+    position: fixed;
+    z-index: 999;
+    left: 0;
+    top: 0;
+    width: 100vw;
+    height: 100vh;
+    overflow: auto;
+    background-color: rgba(0,0,0,0.7);
+    backdrop-filter: blur(3px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .modal-content {
+    background-color: #222;
+    padding: 30px;
+    border-radius: 10px;
+    color: white;
+    width: 320px;
+    box-shadow: 0 0 15px #a811ff;
+  }
+
+  .close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+
+  .close:hover {
+    color: #fff;
+  }
+
+  input[type="text"],
+  input[type="password"] {
+    width: 100%;
+    padding: 8px;
+    margin-top: 5px;
+    border-radius: 4px;
+    border: none;
+    outline: none;
+  }
+
+  button[type="submit"] {
+    width: 100%;
+    padding: 10px;
+    background-color: #c062fa;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-size: 16px;
+    cursor: pointer;
+  }
+
+  button[type="submit"]:hover {
+    background-color: #802be8;
+  }
+
+  #crosshair {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin-left: -10px; /* metade da largura para centralizar */
+    margin-top: -10px;  /* metade da altura para centralizar */
+    pointer-events: none; /* para o mouse "passar" pela mira */
+    z-index: 1000;
+  }
+
+  #crosshair::before,
+  #crosshair::after {
+    content: '';
+    position: absolute;
+    background: white;
+  }
+
+  #crosshair::before {
+    left: 9px;
+    top: 0;
+    width: 2px;
+    height: 20px;
+  }
+
+  #crosshair::after {
+    top: 9px;
+    left: 0;
+    width: 20px;
+    height: 2px;
+  }
